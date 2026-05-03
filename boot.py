@@ -173,8 +173,6 @@ def dashboard():
     loading_cat("FETCHING OPERATOR DATA...", duration=3.0)
     t.join()
 
-    weather = results.get('weather', 'offline')
-    quote = results.get('quote', '"Stay curious, stay dangerous." — CYBERDECK OS')
 
     now = datetime.datetime.now()
     time_str = now.strftime("%H:%M:%S")
@@ -228,13 +226,112 @@ def dashboard():
     console.print()
     console.print("  [dim]type [/dim][cyan]nexus[/cyan][dim] for commands | [/dim][cyan]exit[/cyan][dim] to shutdown[/dim]")
     console.print() 
-def command_loop():
-    tasks = [
-        "finish cyberdeck OS",
-        "push projects to github",
-        "start research organizer idea"
+def save_tasks(tasks):
+    with open("tasks.txt", "w") as f:
+        for task in tasks:
+            f.write(task + "\n")
+
+def load_tasks():
+    try:
+        with open("tasks.txt", "r") as f:
+            return [line.strip() for line in f.readlines() if line.strip()]
+    except:
+        return [
+            "finish cyberdeck OS",
+            "push projects to github",
+            "start research organizer idea"
+        ]
+
+def cmd_flights():
+    console.print()
+    type_out("  SCANNING AIRSPACE...", "bold green", 0.03)
+    time.sleep(0.5)
+    try:
+        # Chandigarh area coordinates
+        lat1, lat2 = 30.5, 31.0
+        lon1, lon2 = 76.5, 77.0
+        res = requests.get(
+            f"https://opensky-network.org/api/states/all?lamin={lat1}&lomin={lon1}&lamax={lat2}&lomax={lon2}",
+            timeout=8
+        )
+        data = res.json()
+        states = data.get("states", [])
+
+        console.print()
+        console.print("  [bold white]// AIRSPACE — CHANDIGARH SECTOR[/bold white]")
+        console.print()
+
+        if not states:
+            console.print("  [dim]no aircraft detected in sector[/dim]")
+        else:
+            console.print(f"  [dim]callsign        country         alt(m)   speed[/dim]")
+            console.print(f"  [dim]{'─'*48}[/dim]")
+            for s in states[:8]:
+                callsign = (s[1] or "UNKNOWN").strip() or "UNKNOWN"
+                country  = (s[2] or "???")[:14]
+                alt      = int(s[7]) if s[7] else 0
+                speed    = int(s[9]) if s[9] else 0
+                console.print(f"  [cyan]{callsign:<16}[/cyan][dim]{country:<16}{alt:<9}{speed} kts[/dim]")
+        console.print()
+    except:
+        console.print()
+        console.print("  [red]airspace feed offline[/red] — [dim]try again later[/dim]")
+        console.print()
+def cmd_news():
+    console.print()
+    type_out("  INTERCEPTING GLOBAL SIGNALS...", "bold green", 0.03)
+    time.sleep(0.5)
+    import xml.etree.ElementTree as ET
+
+    feeds = [
+        ("WORLD",       "https://feeds.bbci.co.uk/news/world/rss.xml"),
+        ("TECH",        "https://feeds.bbci.co.uk/news/technology/rss.xml"),
+        ("SCIENCE",     "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"),
+        ("BUSINESS",    "https://feeds.bbci.co.uk/news/business/rss.xml"),
+        ("SPORT",       "https://feeds.bbci.co.uk/sport/rss.xml"),
     ]
 
+    headlines = []
+    for category, url in feeds:
+        try:
+            res = requests.get(url, timeout=5)
+            root = ET.fromstring(res.content)
+            items = root.findall('./channel/item')[:3]
+            for item in items:
+                title = item.find('title').text
+                headlines.append((category, title))
+        except:
+            pass
+
+    # thought of the day
+    try:
+        res = requests.get("https://api.quotable.io/random?tags=inspirational,wisdom", timeout=3)
+        data = res.json()
+        thought = f'"{data["content"]}" — {data["author"]}'
+    except:
+        thought = '"The people who are crazy enough to think they can change the world are the ones who do." — Steve Jobs'
+
+    console.print()
+    console.print("  [bold white]// GLOBAL FEED[/bold white]")
+    console.print()
+
+    current_cat = ""
+    count = 0
+    for category, title in headlines[:12]:
+        if category != current_cat:
+            if current_cat != "":
+                console.print()
+            console.print(f"  [bold green][ {category} ][/bold green]")
+            current_cat = category
+        console.print(f"  [dim]▸[/dim] {title}")
+        count += 1
+
+    console.print()
+    console.print("  [bold green][ THOUGHT OF THE DAY ][/bold green]")
+    console.print(f"  [italic dim]{thought}[/italic dim]")
+    console.print()
+def command_loop():
+    tasks = load_tasks()
     while True:
         try:
             cmd = console.input("  [bold green]OREXIA@cyberdeck[/bold green][cyan]>[/cyan] ").strip().lower()
@@ -272,22 +369,69 @@ def command_loop():
                 console.print()
             elif cmd == "tasks":
                 console.print()
-                
-                console.print("    [bold white]CURRENT TASKS[/bold white]               ")
+                console.print("  [bold white]// TASKS[/bold white]")
                 console.print()
                 for i, task in enumerate(tasks, 1):
-                    padding = 27 - len(task)
-                    if padding < 0:
-                        padding = 0
-                    console.print(f"   [cyan]{i}.[/cyan] {task}{' ' * padding} ")
+                    console.print(f"  [cyan]{i}.[/cyan] {task}")
+                console.print()
+                console.print("  [dim]add <task>  |  done <number>  |  edit <number> <new>[/dim]")
                 console.print()
 
+            elif cmd.startswith("add "):
+                new_task = cmd[4:].strip()
+                if new_task:
+                    tasks.append(new_task)
+                    save_tasks(tasks)
+                    console.print(f"  [green]task added:[/green] {new_task}")
+                    console.print()
+
+            elif cmd.startswith("done "):
+                try:
+                    idx = int(cmd[5:].strip()) - 1
+                    if 0 <= idx < len(tasks):
+                        removed = tasks.pop(idx)
+                        save_tasks(tasks)
+                        console.print(f"  [green]completed:[/green] [dim]{removed}[/dim]")
+                        console.print()
+                    else:
+                        console.print("  [red]invalid task number[/red]")
+                        console.print()
+                except:
+                    console.print("  [red]usage: done <number>[/red]")
+                    console.print()
+
+            elif cmd.startswith("edit "):
+                try:
+                    parts = cmd[5:].strip().split(" ", 1)
+                    idx = int(parts[0]) - 1
+                    new_text = parts[1].strip()
+                    if 0 <= idx < len(tasks):
+                        old = tasks[idx]
+                        tasks[idx] = new_text
+                        save_tasks(tasks)
+                        console.print(f"  [green]updated:[/green] [dim]{old}[/dim] → {new_text}")
+                        console.print()
+                    else:
+                        console.print("  [red]invalid task number[/red]")
+                        console.print()
+                except:
+                    console.print("  [red]usage: edit <number> <new task>[/red]")
+                    console.print()
+            elif cmd == "news":
+                cmd_news()
+            elif cmd == "flights":
+                cmd_flights()
+
+            elif cmd == "":
+                pass
             elif cmd == "":
                 pass
 
             else:
                 console.print(f"  [red]unknown command:[/red] [dim]{cmd}[/dim] — type [cyan]nexus[/cyan] for commands")
                 console.print()
+
+           
 
         except KeyboardInterrupt:
             console.print()
